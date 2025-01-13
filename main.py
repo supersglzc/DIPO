@@ -7,6 +7,7 @@ from agent.replay_memory import ReplayMemory, DiffusionMemory
 
 from tensorboardX import SummaryWriter
 import gym
+import gymnasium 
 import os
 
 
@@ -57,8 +58,8 @@ def readParser():
     return parser.parse_args()
 
 
-def evaluate(env, agent, writer, steps):
-    episodes = 10
+def evaluate(env, agent, wandb_run, steps):
+    episodes = 5
     returns = np.zeros((episodes,), dtype=np.float32)
 
     for i in range(episodes):
@@ -74,12 +75,22 @@ def evaluate(env, agent, writer, steps):
 
     mean_return = np.mean(returns)
 
-    writer.add_scalar(
-            'reward/test', mean_return, steps)
+    wandb_run.log({'eval/mean_reward': mean_return,
+                   'global_step': steps})
     print('-' * 60)
     print(f'Num steps: {steps:<5}  '
               f'reward: {mean_return:<5.1f}')
     print('-' * 60)
+
+
+def init_wandb(args):
+    import wandb
+    wandb_run = wandb.init(project='ICML_GYM_RUNS',
+                           mode='online',
+                           job_type=f'{args.env_name}_DIPO',
+                        #    entity='di-skill',
+                           name=f'{args.env_name}_seed_{args.seed}')
+    return wandb_run
 
 
 def main(args=None):
@@ -88,21 +99,28 @@ def main(args=None):
 
     device = torch.device(args.cuda)
 
+    wandb_run = init_wandb(args)
+
     dir = "record"
     # dir = "test"
     log_dir = os.path.join(dir, f'{args.env_name}', f'policy_type={args.policy_type}', f'ratio={args.ratio}', f'seed={args.seed}')
     writer = SummaryWriter(log_dir)
 
     # Initial environment
-    env = gym.make(args.env_name)
+    if 'dm_control' in args.env_name:
+        from wrappers import DMCEnvWrapper
+        env = gymnasium.make(args.env_name)
+        env = DMCEnvWrapper(env)
+    else:
+        env = gym.make(args.env_name)
+        env.seed(args.seed)
     state_size = int(np.prod(env.observation_space.shape))
     action_size = int(np.prod(env.action_space.shape))
-    print(action_size)
+    print(state_size, action_size)
 
     # Set random seed
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
-    env.seed(args.seed)
 
     memory_size = 1e6
     num_steps = args.num_steps
@@ -145,7 +163,7 @@ def main(args=None):
                 agent.train(updates_per_step, batch_size=batch_size, log_writer=writer)
 
             if steps % eval_interval == 0:
-                evaluate(env, agent, writer, steps)
+                evaluate(env, agent, wandb_run, steps)
                 # self.save_models()
                 done =True
 
@@ -154,9 +172,12 @@ def main(args=None):
         # if episodes % log_interval == 0:
         #     writer.add_scalar('reward/train', episode_reward, steps)
 
-        print(f'episode: {episodes:<4}  '
-            f'episode steps: {episode_steps:<4}  '
-            f'reward: {episode_reward:<5.1f}')
+        wandb_run.log({'rollout/ep_rew_mean': episode_reward,
+                       'rollout/ep_len_mean': episode_steps,
+                       'global_step': steps})
+        # print(f'episode: {episodes:<4}  '
+        #     f'episode steps: {episode_steps:<4}  '
+        #     f'reward: {episode_reward:<5.1f}')
 
 
 if __name__ == "__main__":

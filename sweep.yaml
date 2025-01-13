@@ -1,0 +1,29 @@
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - ${args_no_hyphens}
+method: grid
+metric:
+  goal: maximize
+  name: reward
+parameters:
+  --env_name:
+    values:
+      - Humanoid-v3
+  --seed:
+    values:
+      - 0
+      - 1
+      - 2
+  --num_steps:
+    values:
+      - 1000000
+  --n_timesteps:
+    values:
+      - 100
+
+program: main.py
+
+
+# 0.23.1
